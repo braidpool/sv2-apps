@@ -1,0 +1,15 @@
+[package]
+name = "braidpool-template-provider"
+version = "0.1.0"
+edition = "2021"
+description = "Converts Braidpool node templates to SV2 TemplateDistribution messages"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+braidpool-common = { path = "../braidpool-common" }
+stratum-apps = { version = "0.8.0", path = "../../stratum-apps", features = ["pool"] }
+async-channel = "1.5.1"
+tokio = { version = "1.44.1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tracing = "0.1"
+bitcoin = { version = "0.32.5", features = ["serde", "std", "rand"] }
