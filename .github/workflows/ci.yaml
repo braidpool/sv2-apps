@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - main
+      - sv2-integration-braidpool
   push:
     branches:
       - main
+      - sv2-integration-braidpool
 
 env:
   CARGO_TERM_COLOR: always
