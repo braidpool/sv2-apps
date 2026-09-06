@@ -20,6 +20,10 @@ pub struct BraidpoolTemplate {
     /// Compact difficulty target (nbits).
     pub nbits: u32,
 
+    /// Block header timestamp (nTime), seconds since Unix epoch.
+    /// Used as min_ntime in SetNewPrevHash → NewExtendedMiningJob downstream.
+    pub header_timestamp: u32,
+
     /// Bitcoin block version.
     pub version: i32,
 

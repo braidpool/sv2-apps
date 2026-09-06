@@ -3,7 +3,6 @@
 //! Converts BraidpoolTemplate (from braidpool-common) to SV2
 //! TemplateDistribution messages for the pool downstream channel manager.
 
-
 use async_channel::{Receiver, Sender};
 use braidpool_common::template::BraidpoolTemplate;
 use stratum_apps::stratum_core::{
@@ -48,13 +47,20 @@ pub async fn sv2_template_consumer(
                 warn!("Cancelled before receiving CoinbaseOutputConstraints");
                 return Ok(());
             }
-            Ok(message) = sv2_incoming_rx.recv() => {
-                if let TemplateDistributionOwned::CoinbaseOutputConstraints(constraints) = message {
-                    info!(
-                        max_size = constraints.coinbase_output_max_additional_size,
-                        "Received CoinbaseOutputConstraints from pool"
-                    );
-                    break;
+            result = sv2_incoming_rx.recv() => {
+                match result {
+                    Ok(TemplateDistributionOwned::CoinbaseOutputConstraints(constraints)) => {
+                        info!(
+                            max_size = constraints.coinbase_output_max_additional_size,
+                            "Received CoinbaseOutputConstraints from pool"
+                        );
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        warn!(error = %e, "SV2 incoming channel closed while waiting for CoinbaseOutputConstraints");
+                        return Err(BraidpoolTemplateProviderError::ChannelRecvError(e.to_string()));
+                    }
                 }
             }
         }
@@ -115,14 +121,14 @@ pub async fn sv2_template_consumer(
                 _current_template_id = Some(template_id);
             }
 
-            Ok(message) = sv2_incoming_rx.recv() => {
-                match message {
-                    TemplateDistributionOwned::SubmitSolution(_solution) => {
+            result = sv2_incoming_rx.recv() => {
+                match result {
+                    Ok(TemplateDistributionOwned::SubmitSolution(_solution)) => {
                         debug!("Received SubmitSolution — forwarding to node via bridge");
                         // TODO(sv2-integration): forward to node's block submission channel
                         // This will be wired in PR 4 when the node bridge is added
                     }
-                    TemplateDistributionOwned::RequestTransactionData(req) => {
+                    Ok(TemplateDistributionOwned::RequestTransactionData(req)) => {
                         debug!(template_id = req.template_id, "Received RequestTransactionData");
                         // Braidpool does not use TDP transaction data requests
                         // Send error response per SV2 spec
@@ -137,8 +143,12 @@ pub async fn sv2_template_consumer(
                             .send(TemplateDistributionOwned::RequestTransactionDataError(err))
                             .await;
                     }
-                    _ => {
+                    Ok(_) => {
                         debug!("Ignoring unhandled incoming SV2 message");
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "SV2 incoming channel closed");
+                        return Err(BraidpoolTemplateProviderError::ChannelRecvError(e.to_string()));
                     }
                 }
             }
