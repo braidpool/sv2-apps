@@ -109,6 +109,110 @@ pub fn build_new_template(
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::{
+        consensus::serialize, locktime::absolute::LockTime, OutPoint, ScriptBuf, Sequence,
+        Transaction, TxIn, TxOut, Witness,
+    };
+    use braidpool_common::template::BraidpoolTemplate;
+
+    fn make_template(coinbase_tx: Transaction) -> BraidpoolTemplate {
+        BraidpoolTemplate {
+            coinbase_tx: serialize(&coinbase_tx),
+            merkle_path: vec![[2u8; 32]],
+            prev_hash: [1u8; 32],
+            nbits: 0x1d00ffff,
+            header_timestamp: 1_700_000_000,
+            version: 2,
+            height: 840_000,
+            template_id: 99,
+        }
+    }
+
+    fn coinbase_tx(outputs: Vec<TxOut>) -> Transaction {
+        Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            input: vec![TxIn {
+                previous_output: OutPoint::null(),
+                script_sig: ScriptBuf::from_bytes(vec![0x03, 0x01, 0x00, 0x00]),
+                sequence: Sequence::MAX,
+                witness: Witness::new(),
+            }],
+            output: outputs,
+            lock_time: LockTime::ZERO,
+        }
+    }
+
+    fn dummy_output(sats: u64) -> TxOut {
+        TxOut {
+            value: bitcoin::Amount::from_sat(sats),
+            script_pubkey: ScriptBuf::new(),
+        }
+    }
+
+    #[test]
+    fn test_build_new_template_maps_fields() {
+        let tx = coinbase_tx(vec![dummy_output(5_000_000_000), dummy_output(0)]);
+        let template = make_template(tx.clone());
+
+        let result = build_new_template(&template, true).unwrap();
+
+        assert_eq!(result.template_id, 99);
+        assert!(result.future_template);
+        assert_eq!(result.version, 2u32);
+        assert_eq!(result.coinbase_tx_value_remaining, 5_000_000_000);
+        assert_eq!(result.coinbase_tx_outputs_count, 2);
+        assert_eq!(result.coinbase_tx_locktime, 0);
+        assert_eq!(result.merkle_path.len(), 1);
+    }
+
+    #[test]
+    fn test_build_new_template_empty_input_returns_error() {
+        let tx = Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            input: vec![],
+            output: vec![dummy_output(0)],
+            lock_time: LockTime::ZERO,
+        };
+        let template = make_template(tx);
+
+        let err = build_new_template(&template, false).unwrap_err();
+        assert!(matches!(err, TemplateDataError::InvalidCoinbaseTx(_)));
+    }
+
+    #[test]
+    fn test_build_new_template_invalid_bytes_returns_error() {
+        let template = BraidpoolTemplate {
+            coinbase_tx: vec![0xde, 0xad, 0xbe, 0xef],
+            merkle_path: vec![],
+            prev_hash: [0u8; 32],
+            nbits: 0,
+            header_timestamp: 0,
+            version: 2,
+            height: 0,
+            template_id: 1,
+        };
+
+        let err = build_new_template(&template, false).unwrap_err();
+        assert!(matches!(err, TemplateDataError::InvalidCoinbaseTx(_)));
+    }
+
+    #[test]
+    fn test_build_set_new_prev_hash_maps_fields() {
+        let tx = coinbase_tx(vec![dummy_output(0)]);
+        let template = make_template(tx);
+
+        let result = build_set_new_prev_hash(&template).unwrap();
+
+        assert_eq!(result.template_id, 99);
+        assert_eq!(result.header_timestamp, 1_700_000_000);
+        assert_eq!(result.n_bits, 0x1d00ffff);
+        assert_eq!(result.prev_hash.as_ref(), &[1u8; 32]);
+    }
+}
+
 /// Build a SetNewPrevHash SV2 message from a BraidpoolTemplate.
 /// Activates the Future Job sent by build_new_template.
 pub fn build_set_new_prev_hash(
