@@ -96,6 +96,12 @@ pub enum TemplateProviderType {
         fee_threshold: u64,
         min_interval: u8,
     },
+    /// Braidpool node injects templates in-process via a tokio channel.
+    ///
+    /// No config fields — the channel receiver is wired at runtime via
+    /// [`PoolSv2::with_braidpool_template_rx`]. Configure in TOML as:
+    /// `template_provider_type = "BraidpoolIpc"`.
+    BraidpoolIpc,
 }
 
 #[cfg(test)]

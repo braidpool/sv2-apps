@@ -1,5 +1,7 @@
 use error::PoolErrorKind;
 use pool_runtime::{Init, PoolRuntime};
+
+pub mod braidpool;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -8,7 +10,9 @@ use stratum_apps::bitcoin_core_sv2::CancellationToken;
 use tokio::sync::Notify;
 use tracing::info;
 
-use crate::config::PoolConfig;
+use braidpool_common::template::BraidpoolTemplate;
+
+use crate::{braidpool::ShareBridgeReceiver, config::PoolConfig};
 
 pub mod channel_manager;
 pub mod config;
@@ -27,6 +31,10 @@ pub struct PoolSv2 {
     cancellation_token: CancellationToken,
     shutdown_notify: Arc<Notify>,
     is_alive: Arc<AtomicBool>,
+    /// In-process template channel for `BraidpoolIpc` mode.
+    /// Wrapped in `Arc<Mutex<Option<...>>>` so `PoolSv2` remains `Clone`.
+    braidpool_template_rx:
+        Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<BraidpoolTemplate>>>>,
 }
 
 #[cfg_attr(not(test), hotpath::measure_all)]
@@ -37,7 +45,33 @@ impl PoolSv2 {
             cancellation_token: CancellationToken::new(),
             shutdown_notify: Arc::new(Notify::new()),
             is_alive: Arc::new(AtomicBool::new(true)),
+            braidpool_template_rx: Arc::new(std::sync::Mutex::new(None)),
         }
+    }
+
+    /// Wires the in-process template channel for `BraidpoolIpc` mode.
+    ///
+    /// Must be called before [`start`] when `template_provider_type = BraidpoolIpc`.
+    /// The receiver is consumed once during bootstrap; calling `start` a second
+    /// time after the channel has been taken will fail with a configuration error.
+    pub fn with_braidpool_template_rx(
+        self,
+        rx: tokio::sync::mpsc::Receiver<BraidpoolTemplate>,
+    ) -> Self {
+        self.braidpool_template_rx
+            .lock()
+            .expect("braidpool_template_rx mutex poisoned")
+            .replace(rx);
+        self
+    }
+
+    pub(crate) fn take_braidpool_template_rx(
+        &self,
+    ) -> Option<tokio::sync::mpsc::Receiver<BraidpoolTemplate>> {
+        self.braidpool_template_rx
+            .lock()
+            .expect("braidpool_template_rx mutex poisoned")
+            .take()
     }
 
     /// Starts the Pool server and blocks asynchronously on the `PoolRuntime`.
@@ -53,7 +87,15 @@ impl PoolSv2 {
     ///
     /// If any error occurs during bootstrapping, `start` receives the partially initialized
     /// runtime, gracefully shuts it down, and then returns the error.
-    pub async fn start(&self) -> Result<(), PoolErrorKind> {
+    ///
+    /// When `share_rx_notify` is `Some`, the [`ShareBridgeReceiver`] is sent over it once
+    /// the channel manager is bootstrapped and the pool is ready to process shares. The
+    /// caller can then forward validated shares to `propagate_valid_bead` without waiting
+    /// for the pool to shut down.
+    pub async fn start(
+        &self,
+        share_rx_notify: Option<tokio::sync::oneshot::Sender<ShareBridgeReceiver>>,
+    ) -> Result<(), PoolErrorKind> {
         let runtime = match PoolRuntime::<Init>::new(self.clone()) {
             Ok(runtime) => runtime,
             Err(err) => {
@@ -62,7 +104,7 @@ impl PoolSv2 {
             }
         };
 
-        let runtime = match runtime.bootstrap().await {
+        let mut runtime = match runtime.bootstrap().await {
             Ok(runtime) => runtime,
             Err(err) => {
                 let (err, runtime) = err.into_parts();
@@ -70,6 +112,14 @@ impl PoolSv2 {
                 return Err(err);
             }
         };
+
+        // Deliver the share bridge receiver to the caller before blocking on shutdown,
+        // so they can start consuming shares without waiting for the pool to exit.
+        if let Some(tx) = share_rx_notify {
+            if let Some(rx) = runtime.take_share_bridge_receiver() {
+                let _ = tx.send(rx);
+            }
+        }
 
         runtime.wait_for_shutdown().await;
         runtime.shutdown().await;
