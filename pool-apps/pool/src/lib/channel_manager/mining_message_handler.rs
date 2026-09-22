@@ -1015,6 +1015,7 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                                                 });
                                             let validated = ValidatedShare {
                                                 template_id,
+                                                channel_id,
                                                 extranonce1: extended_channel.get_extranonce_prefix().to_vec(),
                                                 extranonce2: msg.extranonce.as_bytes().to_vec(),
                                                 version: msg.version,
@@ -1035,6 +1036,7 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                                         if let Some(sender) = &share_bridge {
                                             let validated = ValidatedShare {
                                                 template_id,
+                                                channel_id,
                                                 extranonce1: extended_channel.get_extranonce_prefix().to_vec(),
                                                 extranonce2: msg.extranonce.as_bytes().to_vec(),
                                                 version: msg.version,

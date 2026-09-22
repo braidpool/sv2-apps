@@ -23,6 +23,8 @@ use tokio::sync::mpsc;
 pub struct ValidatedShare {
     /// Template the share was mined against. `None` for custom-job shares.
     pub template_id: Option<u64>,
+    /// SV2 extended channel ID the share arrived on.
+    pub channel_id: u32,
     /// Pool-assigned extranonce prefix (extranonce1 in Stratum v1 terms).
     pub extranonce1: Vec<u8>,
     /// Miner-rolled extranonce suffix (extranonce2).
