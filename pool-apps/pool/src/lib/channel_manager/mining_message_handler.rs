@@ -19,6 +19,7 @@ use stratum_apps::stratum_core::{
         server::{
             error::{ExtendedChannelError, StandardChannelError},
             extended::ExtendedChannel,
+            jobs::JobOrigin,
             share_accounting::{ShareValidationError, ShareValidationResult},
             standard::StandardChannel,
         },
@@ -1006,8 +1007,14 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                                             );
                                         }
                                         if let Some(sender) = &share_bridge {
+                                            let template_id = extended_channel
+                                                .get_active_job()
+                                                .and_then(|job| match job.get_origin() {
+                                                    JobOrigin::NewTemplate(t) => Some(t.template_id),
+                                                    _ => None,
+                                                });
                                             let validated = ValidatedShare {
-                                                template_id: None,
+                                                template_id,
                                                 extranonce1: extended_channel.get_extranonce_prefix().to_vec(),
                                                 extranonce2: msg.extranonce.as_bytes().to_vec(),
                                                 version: msg.version,
