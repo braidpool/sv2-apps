@@ -26,6 +26,8 @@ use jd_server_sv2::job_declarator::{
 };
 
 use super::PoolSv2;
+use braidpool_common::template::BraidpoolTemplate;
+
 use crate::{
     braidpool::{ShareBridgeReceiver, create_share_bridge},
     channel_manager::ChannelManager,
@@ -107,9 +109,12 @@ pub(super) struct PoolRuntime<State> {
     encoded_outputs: Vec<u8>,
     coinbase_outputs: Vec<TxOut>,
     /// Receiver half of the Braidpool share bridge. Created in
-    /// `bootstrap_channel_manager` and kept alive here until PR 4 wires it
-    /// to the node IPC task via `propagate_valid_bead`.
+    /// `bootstrap_channel_manager` and delivered to the node via
+    /// `PoolSv2::start`'s `share_rx_notify` oneshot.
     share_bridge_receiver: Option<ShareBridgeReceiver>,
+    /// In-process template channel for `BraidpoolIpc` mode. Taken from
+    /// `PoolSv2` during `new()` and consumed in `bootstrap_template_provider`.
+    braidpool_template_rx: Option<tokio::sync::mpsc::Receiver<BraidpoolTemplate>>,
 }
 
 impl<State> PoolRuntime<State> {
@@ -123,6 +128,7 @@ impl<State> PoolRuntime<State> {
             encoded_outputs: self.encoded_outputs,
             coinbase_outputs: self.coinbase_outputs,
             share_bridge_receiver: self.share_bridge_receiver,
+            braidpool_template_rx: self.braidpool_template_rx,
         }
     }
 
@@ -189,6 +195,8 @@ impl PoolRuntime<Init> {
             .consensus_encode(&mut encoded_outputs)
             .map_err(|err| PoolErrorKind::Io(err.into()))?;
 
+        let braidpool_template_rx = pool.take_braidpool_template_rx();
+
         Ok(PoolRuntime {
             pool,
             task_manager: Arc::new(TaskManager::new()),
@@ -198,6 +206,7 @@ impl PoolRuntime<Init> {
             coinbase_outputs,
             encoded_outputs,
             share_bridge_receiver: None,
+            braidpool_template_rx,
         })
     }
 
@@ -227,6 +236,7 @@ impl PoolRuntime<Init> {
             encoded_outputs: self.encoded_outputs,
             state: IoReady { io },
             share_bridge_receiver: self.share_bridge_receiver,
+            braidpool_template_rx: self.braidpool_template_rx,
         }
     }
 
@@ -284,11 +294,12 @@ impl PoolRuntime<IoReady> {
                             Err(err) => return Err((PoolErrorKind::Jds(err), self)),
                         }
                     }
-                    TemplateProviderType::Sv2Tp { .. } => {
+                    TemplateProviderType::Sv2Tp { .. }
+                    | TemplateProviderType::BraidpoolIpc => {
                         return Err((
                             PoolErrorKind::Configuration(
                                 "[jds] requires template_provider_type = BitcoinCoreIpc \
-                                                     (JDS needs direct IPC access to Bitcoin Core)"
+                                 (JDS needs direct IPC access to Bitcoin Core)"
                                     .to_string(),
                             ),
                             self,
@@ -366,18 +377,54 @@ impl PoolRuntime<IoReady> {
             encoded_outputs: self.encoded_outputs,
             state: new_state,
             share_bridge_receiver: self.share_bridge_receiver,
+            braidpool_template_rx: self.braidpool_template_rx,
         })
     }
 }
 
 impl PoolRuntime<JdsReady> {
     async fn bootstrap_template_provider(
-        self,
+        mut self,
     ) -> Result<PoolRuntime<TemplateProviderReady>, (PoolErrorKind, PoolRuntime<JdsReady>)> {
         let cancellation_token = self.pool.cancellation_token.clone();
         let mut bitcoin_core_sv2: Option<BitcoinCoreSv2Handle> = None;
 
         match self.pool.config.template_provider_type().clone() {
+            TemplateProviderType::BraidpoolIpc => {
+                let template_rx = match self.braidpool_template_rx.take() {
+                    Some(rx) => rx,
+                    None => {
+                        return Err((
+                            PoolErrorKind::Configuration(
+                                "BraidpoolIpc requires a template receiver; \
+                                 call with_braidpool_template_rx() before start()"
+                                    .to_string(),
+                            ),
+                            self,
+                        ));
+                    }
+                };
+
+                let sv2_outgoing_tx = self.state.io.tp_to_channel_manager_sender.clone();
+                let sv2_incoming_rx = self.state.io.channel_manager_to_tp_receiver.clone();
+                let ct = cancellation_token.clone();
+                let tm = self.task_manager.clone();
+
+                tm.spawn(async move {
+                    if let Err(e) = braidpool_template_provider::sv2_template_consumer(
+                        template_rx,
+                        sv2_outgoing_tx,
+                        sv2_incoming_rx,
+                        ct,
+                    )
+                    .await
+                    {
+                        error!(error = %e, "braidpool sv2_template_consumer exited with error");
+                    }
+                });
+
+                info!("Braidpool IPC template provider started");
+            }
             TemplateProviderType::Sv2Tp {
                 address,
                 public_key,
@@ -477,6 +524,7 @@ impl PoolRuntime<JdsReady> {
             encoded_outputs: self.encoded_outputs,
             state: new_state,
             share_bridge_receiver: self.share_bridge_receiver,
+            braidpool_template_rx: None, // consumed above; not needed after this stage
         })
     }
 }
@@ -519,6 +567,7 @@ impl PoolRuntime<TemplateProviderReady> {
             encoded_outputs: self.encoded_outputs,
             state: new_state,
             share_bridge_receiver: Some(share_bridge_receiver),
+            braidpool_template_rx: None,
         })
     }
 }
@@ -627,6 +676,7 @@ impl PoolRuntime<ChannelManagerReady> {
             encoded_outputs: self.encoded_outputs,
             state: Running,
             share_bridge_receiver: self.share_bridge_receiver,
+            braidpool_template_rx: None,
         })
     }
 }
@@ -634,5 +684,11 @@ impl PoolRuntime<ChannelManagerReady> {
 impl PoolRuntime<Running> {
     pub(super) async fn wait_for_shutdown(&self) {
         self.pool.cancellation_token.cancelled().await;
+    }
+
+    /// Takes the share bridge receiver out of the runtime so the caller can
+    /// forward validated shares to `propagate_valid_bead`.
+    pub(super) fn take_share_bridge_receiver(&mut self) -> Option<ShareBridgeReceiver> {
+        self.share_bridge_receiver.take()
     }
 }

@@ -36,7 +36,7 @@ async fn inner_main() {
         }
     });
 
-    if let Err(e) = pool.start().await {
+    if let Err(e) = pool.start(None).await {
         tracing::error!("Pool Error'ed out: {e}");
         std::process::exit(1);
     };

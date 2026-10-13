@@ -19,6 +19,8 @@ path = "src/lib/mod.rs"
 
 [dependencies]
 stratum-apps = { version = "0.8.0", path = "../../stratum-apps", features = ["pool"] }
+braidpool-common = { path = "../braidpool-common" }
+braidpool-template-provider = { path = "../braidpool-template-provider" }
 async-channel = "1.5.1"
 serde = { version = "1.0.89", features = ["derive", "alloc"], default-features = false }
 tokio = { version = "1.44.1", features = ["full"] }
