@@ -14,11 +14,14 @@ use std::{
 };
 
 pub use jd_server_sv2::config::{JDSConfig, JDSPartialConfig};
-use stratum_apps::{
-    config_helpers::{CoinbaseRewardScript, opt_path_from_toml},
+pub use stratum_apps::{
+    config_helpers::CoinbaseRewardScript,
     key_utils::{Secp256k1PublicKey, Secp256k1SecretKey},
-    stratum_core::bitcoin::{Amount, TxOut},
     tp_type::TemplateProviderType,
+};
+use stratum_apps::{
+    config_helpers::opt_path_from_toml,
+    stratum_core::bitcoin::{Amount, TxOut},
     utils::types::{SharesBatchSize, SharesPerMinute},
 };
 
@@ -91,6 +94,34 @@ impl PoolConfig {
             monitoring_cache_refresh_secs,
             jds,
         }
+    }
+
+    /// Builds a [`PoolConfig`] for Braidpool's in-process pool mode.
+    ///
+    /// Uses `BraidpoolIpc` as the template provider (no external TDP address needed —
+    /// the template channel is wired at runtime via [`PoolSv2::with_braidpool_template_rx`]).
+    /// Sensible defaults are applied: 1-hour cert validity, 20 shares/min target,
+    /// batch size 100, no JDS, no monitoring.
+    pub fn for_braidpool(
+        listen_address: SocketAddr,
+        authority_public_key: Secp256k1PublicKey,
+        authority_secret_key: Secp256k1SecretKey,
+        coinbase_reward_script: CoinbaseRewardScript,
+    ) -> Self {
+        Self::new(
+            ConnectionConfig::new(listen_address, 3600, "braidpool".to_string()),
+            TemplateProviderType::BraidpoolIpc,
+            AuthorityConfig::new(authority_public_key, authority_secret_key),
+            coinbase_reward_script,
+            20.0,
+            100,
+            0,
+            vec![],
+            vec![],
+            None,
+            None,
+            None,
+        )
     }
 
     /// Returns the coinbase output.

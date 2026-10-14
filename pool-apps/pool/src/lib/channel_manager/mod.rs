@@ -118,6 +118,10 @@ pub struct ChannelManager {
     required_extensions: Vec<u16>,
     /// Embedded Job Declaration engine (present when `[jds]` config is set).
     job_declarator: Option<JobDeclarator>,
+    /// Sender half of the Braidpool share bridge. Present when the pool runs in
+    /// Braidpool mode; `None` in standalone SRI mode. Every validated share is
+    /// forwarded here for bead construction in the node (wired by PR 4).
+    share_bridge_sender: Option<crate::braidpool::ShareBridgeSender>,
 }
 
 #[cfg_attr(not(test), hotpath::measure_all)]
@@ -166,6 +170,7 @@ impl ChannelManager {
         downstream_receiver: Receiver<(DownstreamId, MiningOwned, Option<Vec<Tlv>>)>,
         coinbase_outputs: Vec<u8>,
         job_declarator: Option<JobDeclarator>,
+        share_bridge_sender: Option<crate::braidpool::ShareBridgeSender>,
     ) -> PoolResult<Self, error::ChannelManager> {
         // Simulating a scenario where there are multiple mining servers,
         // `server_id` is used as `local_prefix_bytes` so each pool instance
@@ -199,6 +204,7 @@ impl ChannelManager {
             supported_extensions: config.supported_extensions().to_vec(),
             required_extensions: config.required_extensions().to_vec(),
             job_declarator,
+            share_bridge_sender,
         };
 
         Ok(channel_manager)

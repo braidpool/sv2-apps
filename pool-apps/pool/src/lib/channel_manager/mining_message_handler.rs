@@ -19,6 +19,7 @@ use stratum_apps::stratum_core::{
         server::{
             error::{ExtendedChannelError, StandardChannelError},
             extended::ExtendedChannel,
+            jobs::JobOrigin,
             share_accounting::{ShareValidationError, ShareValidationResult},
             standard::StandardChannel,
         },
@@ -36,6 +37,7 @@ use tracing::{error, info, warn};
 use jd_server_sv2::job_declarator::SetCustomMiningJobResponse;
 
 use crate::{
+    braidpool::ValidatedShare,
     channel_manager::{CLIENT_SEARCH_SPACE_BYTES, ChannelManager, RouteMessageTo},
     error::{self, PoolError, PoolErrorKind},
     utils::{PayoutMode, PayoutModeError, create_close_channel_msg},
@@ -943,6 +945,9 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
 
         let channel_id = msg.channel_id;
         let vardiff_key = (downstream_id, channel_id).into();
+        // Clone before the immutable borrow below so the sender can be moved
+        // into the closure without holding a reference to self.
+        let share_bridge = self.share_bridge_sender.clone();
         let messages = self.with_registered_downstream(downstream_id, |downstream| {
                 let messages = if !downstream.extended_channels.contains_key(&channel_id) {
                     let error = SubmitSharesErrorOwned {
@@ -1001,6 +1006,26 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                                                 downstream_id, channel_id, msg.sequence_number, share_hash, share_work
                                             );
                                         }
+                                        if let Some(sender) = &share_bridge {
+                                            let template_id = extended_channel
+                                                .get_active_job()
+                                                .and_then(|job| match job.get_origin() {
+                                                    JobOrigin::NewTemplate(t) => Some(t.template_id),
+                                                    _ => None,
+                                                });
+                                            let validated = ValidatedShare {
+                                                template_id,
+                                                channel_id,
+                                                extranonce1: extended_channel.get_extranonce_prefix().to_vec(),
+                                                extranonce2: msg.extranonce.as_bytes().to_vec(),
+                                                version: msg.version,
+                                                ntime: msg.ntime,
+                                                nonce: msg.nonce,
+                                            };
+                                            if sender.send(validated).is_err() {
+                                                warn!("share bridge closed — validated share dropped");
+                                            }
+                                        }
                                     }
                                     Ok(ShareValidationResult::BlockFound(
                                         share_hash,
@@ -1008,6 +1033,20 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                                         coinbase,
                                     )) => {
                                         info!("SubmitSharesExtended: 💰 Block Found!!! 💰{share_hash}");
+                                        if let Some(sender) = &share_bridge {
+                                            let validated = ValidatedShare {
+                                                template_id,
+                                                channel_id,
+                                                extranonce1: extended_channel.get_extranonce_prefix().to_vec(),
+                                                extranonce2: msg.extranonce.as_bytes().to_vec(),
+                                                version: msg.version,
+                                                ntime: msg.ntime,
+                                                nonce: msg.nonce,
+                                            };
+                                            if sender.send(validated).is_err() {
+                                                warn!("share bridge closed — block-found share dropped");
+                                            }
+                                        }
                                         if let Some(template_id) = template_id {
                                             info!("SubmitSharesExtended: Propagating solution to the Template Provider.");
                                             let solution = SubmitSolutionOwned {
