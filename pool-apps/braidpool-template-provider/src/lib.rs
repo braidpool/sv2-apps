@@ -5,7 +5,7 @@
 
 use async_channel::{Receiver, Sender};
 use braidpool_common::template::BraidpoolTemplate;
-use stratum_apps::stratum_core::{
+use stratum_core::{
     parsers_sv2::TemplateDistributionOwned,
     template_distribution_sv2::RequestTransactionDataErrorOwned,
 };

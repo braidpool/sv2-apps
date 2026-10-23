@@ -5,7 +5,7 @@
 use crate::error::TemplateDataError;
 use bitcoin::{consensus::deserialize, Transaction};
 use braidpool_common::template::BraidpoolTemplate;
-use stratum_apps::stratum_core::{
+use stratum_core::{
     binary_sv2::{B0255Owned, B064KOwned, Seq0255Owned, U256Owned},
     template_distribution_sv2::{NewTemplateOwned, SetNewPrevHashOwned},
 };
