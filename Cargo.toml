@@ -6,6 +6,8 @@ members = [
     "stratum-apps",
     "pool-apps/pool",
     "pool-apps/jd-server",
+    "pool-apps/braidpool-common",
+    "pool-apps/braidpool-template-provider",
     "miner-apps/jd-client",
     "miner-apps/translator",
     "integration-tests",
@@ -19,6 +21,8 @@ default-members = [
     "stratum-apps",
     "pool-apps/pool",
     "pool-apps/jd-server",
+    "pool-apps/braidpool-common",
+    "pool-apps/braidpool-template-provider",
     "miner-apps/jd-client",
     "miner-apps/translator",
 ]

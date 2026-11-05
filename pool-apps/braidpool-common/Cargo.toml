@@ -1,0 +1,8 @@
+[package]
+name = "braidpool-common"
+version = "0.1.0"
+edition = "2021"
+description = "Common types shared between Braidpool node and sv2-apps"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
