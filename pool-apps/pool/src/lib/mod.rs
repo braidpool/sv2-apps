@@ -33,8 +33,11 @@ pub struct PoolSv2 {
     is_alive: Arc<AtomicBool>,
     /// In-process template channel for `BraidpoolIpc` mode.
     /// Wrapped in `Arc<Mutex<Option<...>>>` so `PoolSv2` remains `Clone`.
-    braidpool_template_rx:
-        Arc<std::sync::Mutex<Option<tokio::sync::mpsc::Receiver<BraidpoolTemplate>>>>,
+    braidpool_template_rx: Arc<
+        std::sync::Mutex<
+            Option<tokio::sync::watch::Receiver<Option<BraidpoolTemplate>>>,
+        >,
+    >,
 }
 
 #[cfg_attr(not(test), hotpath::measure_all)]
@@ -54,9 +57,9 @@ impl PoolSv2 {
     /// Must be called before [`start`] when `template_provider_type = BraidpoolIpc`.
     /// The receiver is consumed once during bootstrap; calling `start` a second
     /// time after the channel has been taken will fail with a configuration error.
-    pub fn with_braidpool_template_rx(
+    pub fn with_braidpool_template_watch(
         self,
-        rx: tokio::sync::mpsc::Receiver<BraidpoolTemplate>,
+        rx: tokio::sync::watch::Receiver<Option<BraidpoolTemplate>>,
     ) -> Self {
         self.braidpool_template_rx
             .lock()
@@ -67,7 +70,7 @@ impl PoolSv2 {
 
     pub(crate) fn take_braidpool_template_rx(
         &self,
-    ) -> Option<tokio::sync::mpsc::Receiver<BraidpoolTemplate>> {
+    ) -> Option<tokio::sync::watch::Receiver<Option<BraidpoolTemplate>>> {
         self.braidpool_template_rx
             .lock()
             .expect("braidpool_template_rx mutex poisoned")

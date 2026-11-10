@@ -1079,9 +1079,7 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                                                 ntime: msg.ntime,
                                                 nonce: msg.nonce,
                                             };
-                                            if sender.send(validated).is_err() {
-                                                warn!("share bridge closed — validated share dropped");
-                                            }
+                                            sender.send(validated);
                                         }
                                     }
                                     Ok(ShareValidationResult::BlockFound(
@@ -1100,9 +1098,7 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                                                 ntime: msg.ntime,
                                                 nonce: msg.nonce,
                                             };
-                                            if sender.send(validated).is_err() {
-                                                warn!("share bridge closed — block-found share dropped");
-                                            }
+                                            sender.send(validated);
                                         }
                                         if let Some(template_id) = template_id {
                                             info!("SubmitSharesExtended: Propagating solution to the Template Provider.");

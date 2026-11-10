@@ -8,10 +8,15 @@
 //! ```text
 //! SubmitSharesExtended
 //!   → validate_share (ExtendedChannel)
-//!   → ValidatedShare  ──[ShareBridgeSender]──► node::propagate_valid_bead  (PR 4)
+//!   → ValidatedShare  ──[ShareBridgeSender]──► node::propagate_valid_bead
 //! ```
 
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use tokio::sync::mpsc;
+use tracing::warn;
 
 /// A share that passed pool-level PoW validation, ready for bead construction.
 ///
@@ -102,16 +107,57 @@ impl ExtraNonceConfig {
     }
 }
 
-/// Sender half of the share bridge — held by the pool's `ChannelManager`.
-pub type ShareBridgeSender = mpsc::UnboundedSender<ValidatedShare>;
+/// Capacity of the share bridge. Bounded so a slow node consumer cannot grow the
+/// pool→node queue without limit; excess shares are dropped and counted rather
+/// than blocking the pool's hot path.
+pub const SHARE_BRIDGE_CAPACITY: usize = 1024;
 
-/// Receiver half of the share bridge — consumed by the node IPC task (PR 4).
-pub type ShareBridgeReceiver = mpsc::UnboundedReceiver<ValidatedShare>;
+/// Sender half of the share bridge — held by the pool's `ChannelManager`.
+///
+/// Non-blocking: [`send`](Self::send) uses `try_send`, so pool share validation
+/// never blocks on the node. When the bounded channel is full (or the receiver
+/// has gone away) the share is dropped and the drop counter is incremented.
+#[derive(Clone)]
+pub struct ShareBridgeSender {
+    tx: mpsc::Sender<ValidatedShare>,
+    dropped: Arc<AtomicU64>,
+}
+
+impl ShareBridgeSender {
+    /// Forwards a validated share to the node without blocking.
+    ///
+    /// Drops the share — bumping the drop counter and logging a warning — if the
+    /// bounded channel is full or the receiver has been dropped.
+    pub fn send(&self, share: ValidatedShare) {
+        if self.tx.try_send(share).is_err() {
+            let dropped = self.dropped.fetch_add(1, Ordering::Relaxed) + 1;
+            warn!(
+                dropped,
+                "share bridge full or closed — validated share dropped"
+            );
+        }
+    }
+
+    /// Total shares dropped due to backpressure or a closed channel.
+    pub fn dropped_count(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+}
+
+/// Receiver half of the share bridge — consumed by the node IPC task.
+pub type ShareBridgeReceiver = mpsc::Receiver<ValidatedShare>;
 
 /// Create the share bridge channel connecting pool validation to node bead construction.
 ///
 /// The sender is stored on `ChannelManager`; the receiver is kept alive in
-/// `PoolRuntime` until PR 4 wires it to `propagate_valid_bead` over IPC.
+/// `PoolRuntime` until it is wired to `propagate_valid_bead` over IPC.
 pub fn create_share_bridge() -> (ShareBridgeSender, ShareBridgeReceiver) {
-    mpsc::unbounded_channel()
+    let (tx, rx) = mpsc::channel(SHARE_BRIDGE_CAPACITY);
+    (
+        ShareBridgeSender {
+            tx,
+            dropped: Arc::new(AtomicU64::new(0)),
+        },
+        rx,
+    )
 }

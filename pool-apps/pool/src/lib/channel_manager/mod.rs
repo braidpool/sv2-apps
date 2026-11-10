@@ -122,7 +122,7 @@ pub struct ChannelManager {
     job_declarator: Option<JobDeclarator>,
     /// Sender half of the Braidpool share bridge. Present when the pool runs in
     /// Braidpool mode; `None` in standalone SRI mode. Every validated share is
-    /// forwarded here for bead construction in the node (wired by PR 4).
+    /// forwarded here for bead construction in the node.
     share_bridge_sender: Option<crate::braidpool::ShareBridgeSender>,
 }
 

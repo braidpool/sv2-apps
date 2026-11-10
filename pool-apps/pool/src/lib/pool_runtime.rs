@@ -114,7 +114,7 @@ pub(super) struct PoolRuntime<State> {
     share_bridge_receiver: Option<ShareBridgeReceiver>,
     /// In-process template channel for `BraidpoolIpc` mode. Taken from
     /// `PoolSv2` during `new()` and consumed in `bootstrap_template_provider`.
-    braidpool_template_rx: Option<tokio::sync::mpsc::Receiver<BraidpoolTemplate>>,
+    braidpool_template_rx: Option<tokio::sync::watch::Receiver<Option<BraidpoolTemplate>>>,
 }
 
 impl<State> PoolRuntime<State> {
@@ -397,7 +397,7 @@ impl PoolRuntime<JdsReady> {
                         return Err((
                             PoolErrorKind::Configuration(
                                 "BraidpoolIpc requires a template receiver; \
-                                 call with_braidpool_template_rx() before start()"
+                                 call with_braidpool_template_watch() before start()"
                                     .to_string(),
                             ),
                             self,
