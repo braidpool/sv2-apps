@@ -1,16 +1,12 @@
+/// Errors from the SV2 template consumer task.
+///
+/// Message-build failures use [`TemplateDataError`]; this type covers the
+/// consumer's channel lifecycle. Variants for the block-submission path
+/// (SubmitSolution → node) will be added when that leg is wired.
 #[derive(Debug)]
 pub enum BraidpoolTemplateProviderError {
-    InvalidTemplateData(String),
-    InvalidCoinbaseTx(String),
-    InvalidBlockVersion,
-    InvalidCoinbaseTxVersion,
-    InvalidCoinbaseScriptSig,
-    CoinbaseOutputSerializationFailed,
-    BlockDeserializationFailed(String),
-    TemplateNotFound(u64),
     ChannelSendError(String),
     ChannelRecvError(String),
-    MerklePathError(String),
 }
 
 /// Errors specific to building SV2 template messages

@@ -62,10 +62,10 @@ pub fn build_new_template(
 
     // braidpool_mode=true: include ALL outputs (reward[0] + segwit[1] + OP_RETURN[2])
     // Standard SRI mode would only include output[0]
-    let outputs_to_include = coinbase_tx.output.to_vec();
+    let outputs_to_include = &coinbase_tx.output;
 
     let mut serialized_outputs = Vec::new();
-    for output in &outputs_to_include {
+    for output in outputs_to_include {
         serialized_outputs.extend_from_slice(&bitcoin::consensus::serialize(output));
     }
 
@@ -210,6 +210,8 @@ mod tests {
         assert_eq!(result.ntime_start, 1_700_000_000);
         assert_eq!(result.n_bits, 0x1d00ffff);
         assert_eq!(result.prev_hash.as_ref(), &[1u8; 32]);
+        // Target must be derived from nbits, not sent as zeros.
+        assert_ne!(result.target.as_ref(), &[0u8; 32]);
     }
 }
 
@@ -220,11 +222,18 @@ pub fn build_set_new_prev_hash(
 ) -> Result<SetNewPrevHashOwned, TemplateDataError> {
     let prev_hash = U256Owned::from(template.prev_hash);
 
+    // Consensus target derived from nbits, little-endian — matches the SRI
+    // reference (bitcoin-core-sv2 template_data.rs::get_target). It is redundant
+    // with n_bits, but downstream may read it directly, so send the real value
+    // rather than zeros.
+    let target_bytes: [u8; 32] =
+        bitcoin::Target::from(bitcoin::CompactTarget::from_consensus(template.nbits)).to_le_bytes();
+
     Ok(SetNewPrevHashOwned {
         template_id: template.template_id,
         prev_hash,
         ntime_start: template.header_timestamp,
         n_bits: template.nbits,
-        target: U256Owned::from([0u8; 32]), // pool sets target via SetTarget separately
+        target: U256Owned::from(target_bytes),
     })
 }

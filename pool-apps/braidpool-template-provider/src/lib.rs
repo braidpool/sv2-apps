@@ -9,6 +9,7 @@ use stratum_core::{
     parsers_sv2::TemplateDistributionOwned,
     template_distribution_sv2::RequestTransactionDataErrorOwned,
 };
+use tokio::sync::watch;
 pub use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
@@ -29,14 +30,12 @@ pub use error::BraidpoolTemplateProviderError;
 /// * `sv2_incoming_rx` - Receiver for incoming SV2 messages (SubmitSolution etc.)
 /// * `cancellation_token` - Token for graceful shutdown
 pub async fn sv2_template_consumer(
-    mut template_rx: tokio::sync::mpsc::Receiver<BraidpoolTemplate>,
+    mut template_rx: watch::Receiver<Option<BraidpoolTemplate>>,
     sv2_outgoing_tx: Sender<TemplateDistributionOwned>,
     sv2_incoming_rx: Receiver<TemplateDistributionOwned>,
     cancellation_token: CancellationToken,
 ) -> Result<(), BraidpoolTemplateProviderError> {
     info!("SV2 template consumer started");
-
-    let mut _current_template_id: Option<u64> = None;
 
     // Wait for CoinbaseOutputConstraints from pool before processing templates.
     // The pool sends this on startup to tell us the max coinbase output size.
@@ -74,7 +73,11 @@ pub async fn sv2_template_consumer(
                 return Ok(());
             }
 
-            Some(template) = template_rx.recv() => {
+            Ok(_) = template_rx.changed() => {
+                let template = match template_rx.borrow_and_update().clone() {
+                    Some(t) => t,
+                    None => continue,
+                };
                 let template_id = template.template_id;
                 debug!(template_id, "Received BraidpoolTemplate");
 
@@ -117,16 +120,13 @@ pub async fn sv2_template_consumer(
                         continue;
                     }
                 }
-
-                _current_template_id = Some(template_id);
             }
 
             result = sv2_incoming_rx.recv() => {
                 match result {
                     Ok(TemplateDistributionOwned::SubmitSolution(_solution)) => {
                         debug!("Received SubmitSolution — forwarding to node via bridge");
-                        // TODO(sv2-integration): forward to node's block submission channel
-                        // This will be wired in PR 4 when the node bridge is added
+                        // TODO: forward to the node's block submission channel once the bridge exists
                     }
                     Ok(TemplateDistributionOwned::RequestTransactionData(req)) => {
                         debug!(template_id = req.template_id, "Received RequestTransactionData");
