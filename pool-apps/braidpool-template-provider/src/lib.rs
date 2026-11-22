@@ -73,7 +73,11 @@ pub async fn sv2_template_consumer(
                 return Ok(());
             }
 
-            Ok(_) = template_rx.changed() => {
+            changed = template_rx.changed() => {
+                if let Err(e) = changed {
+                    warn!(error = %e, "Template watch sender dropped — shutting down SV2 template consumer");
+                    return Ok(());
+                }
                 let template = match template_rx.borrow_and_update().clone() {
                     Some(t) => t,
                     None => continue,

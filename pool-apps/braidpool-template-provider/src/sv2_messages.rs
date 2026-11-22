@@ -56,7 +56,9 @@ pub fn build_new_template(
 
     let coinbase_tx_input_sequence = coinbase_tx.input[0].sequence.to_consensus_u32();
 
-    // Total value across all outputs
+    // TODO(sv2): in braidpool_mode this must be 0. The outputs below already carry the
+    // full reward, and the pool pays value_remaining again on top. Fixed in #2
+    // together with PayoutMode::Braidpool.
     let coinbase_tx_value_remaining: u64 =
         coinbase_tx.output.iter().map(|o| o.value.to_sat()).sum();
 
