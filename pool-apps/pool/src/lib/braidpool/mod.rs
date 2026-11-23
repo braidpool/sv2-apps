@@ -12,8 +12,8 @@
 //! ```
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicU64, Ordering},
 };
 use tokio::sync::mpsc;
 use tracing::warn;

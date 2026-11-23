@@ -124,6 +124,10 @@ pub struct ChannelManager {
     /// Braidpool mode; `None` in standalone SRI mode. Every validated share is
     /// forwarded here for bead construction in the node.
     share_bridge_sender: Option<crate::braidpool::ShareBridgeSender>,
+    /// True when the pool runs in Braidpool mode (`TemplateProviderType::BraidpoolIpc`).
+    /// The node builds the complete coinbase, so every downstream pays via
+    /// `PayoutMode::Braidpool` and the pool adds no output of its own.
+    braidpool_mode: bool,
 }
 
 #[cfg_attr(not(test), hotpath::measure_all)]
@@ -216,6 +220,10 @@ impl ChannelManager {
             required_extensions: config.required_extensions().to_vec(),
             job_declarator,
             share_bridge_sender,
+            braidpool_mode: matches!(
+                config.template_provider_type(),
+                stratum_apps::tp_type::TemplateProviderType::BraidpoolIpc
+            ),
         };
 
         Ok(channel_manager)

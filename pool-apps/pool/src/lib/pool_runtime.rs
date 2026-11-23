@@ -294,8 +294,7 @@ impl PoolRuntime<IoReady> {
                             Err(err) => return Err((PoolErrorKind::Jds(err), self)),
                         }
                     }
-                    TemplateProviderType::Sv2Tp { .. }
-                    | TemplateProviderType::BraidpoolIpc => {
+                    TemplateProviderType::Sv2Tp { .. } | TemplateProviderType::BraidpoolIpc => {
                         return Err((
                             PoolErrorKind::Configuration(
                                 "[jds] requires template_provider_type = BitcoinCoreIpc \

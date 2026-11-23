@@ -33,11 +33,8 @@ pub struct PoolSv2 {
     is_alive: Arc<AtomicBool>,
     /// In-process template channel for `BraidpoolIpc` mode.
     /// Wrapped in `Arc<Mutex<Option<...>>>` so `PoolSv2` remains `Clone`.
-    braidpool_template_rx: Arc<
-        std::sync::Mutex<
-            Option<tokio::sync::watch::Receiver<Option<BraidpoolTemplate>>>,
-        >,
-    >,
+    braidpool_template_rx:
+        Arc<std::sync::Mutex<Option<tokio::sync::watch::Receiver<Option<BraidpoolTemplate>>>>>,
 }
 
 #[cfg_attr(not(test), hotpath::measure_all)]

@@ -184,6 +184,11 @@ impl TranslatorConfig {
                 user_identity: user_identity.to_string(),
                 mode: MissingMinerPayoutMode::FullDonation,
             }),
+            // Braidpool builds the payout in the node's coinbase, so there is no miner
+            // payout for the translator to verify. Unreachable in practice: try_from
+            // never yields Braidpool (it is set pool-side via braidpool_mode, not parsed
+            // from user_identity).
+            Ok(PayoutMode::Braidpool) => Ok(None),
             Err(PayoutModeError::NoPayoutMode(_)) => Err(PayoutModeError::MissingMinerPayout {
                 user_identity: user_identity.to_string(),
                 mode: MissingMinerPayoutMode::NoPayoutMode,

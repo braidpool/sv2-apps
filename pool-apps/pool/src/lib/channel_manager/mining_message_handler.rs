@@ -61,6 +61,19 @@ fn extranonce_allocation_error_code(
 }
 
 #[cfg_attr(not(test), hotpath::measure_all)]
+impl ChannelManager {
+    /// Resolves the payout mode for a downstream.
+    ///
+    /// In Braidpool mode the node builds the entire coinbase, so every downstream
+    /// pays via [`PayoutMode::Braidpool`] regardless of its `user_identity`.
+    fn resolve_payout_mode(&self, user_identity: &str) -> Result<PayoutMode, PayoutModeError> {
+        if self.braidpool_mode {
+            return Ok(PayoutMode::Braidpool);
+        }
+        PayoutMode::try_from(user_identity)
+    }
+}
+
 impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
     type Error = PoolError<error::ChannelManager>;
 
@@ -176,7 +189,7 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                     ));
                 };
 
-                let payout_mode = match PayoutMode::try_from(user_identity.as_str()) {
+                let payout_mode = match self.resolve_payout_mode(user_identity.as_str()) {
                     Ok(mode) => mode,
                     Err(PayoutModeError::NoPayoutMode(_)) => PayoutMode::FullDonation,
                     Err(_) => {
@@ -440,7 +453,7 @@ impl HandleMiningMessagesFromClientOwnedAsync for ChannelManager {
                         .into()]);
                 }
 
-                let payout_mode = match PayoutMode::try_from(user_identity.as_str()) {
+                let payout_mode = match self.resolve_payout_mode(user_identity.as_str()) {
                     Ok(mode) => mode,
                     Err(PayoutModeError::NoPayoutMode(_)) => PayoutMode::FullDonation,
                     Err(_) => {
