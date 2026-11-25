@@ -53,6 +53,9 @@ pub enum PayoutMode {
     },
     /// Full donation mode: full reward goes to the pool.
     FullDonation,
+    /// Braidpool mode: the node builds the complete coinbase (every payout output),
+    /// so the pool adds no output of its own and passes the node's outputs through.
+    Braidpool,
 }
 
 impl PayoutMode {
@@ -103,6 +106,10 @@ impl PayoutMode {
                     script_pubkey: pool_script.script_pubkey(),
                 }]
             }
+
+            // The node already placed every payout output in the template's
+            // `coinbase_tx_outputs`; the pool contributes none of its own.
+            Self::Braidpool => Vec::new(),
         }
     }
 
@@ -214,7 +221,7 @@ impl PayoutMode {
             Self::Solo { address, .. }
             | Self::LegacySolo { address, .. }
             | Self::Donate { address, .. } => Some(address.as_str()),
-            Self::FullDonation => None,
+            Self::FullDonation | Self::Braidpool => None,
         }
     }
 
@@ -223,7 +230,7 @@ impl PayoutMode {
             Self::Solo { script, .. }
             | Self::LegacySolo { script, .. }
             | Self::Donate { script, .. } => Some(script.script_pubkey()),
-            Self::FullDonation => None,
+            Self::FullDonation | Self::Braidpool => None,
         }
     }
 
@@ -231,7 +238,7 @@ impl PayoutMode {
         match self {
             Self::Solo { .. } | Self::LegacySolo { .. } => 100,
             Self::Donate { percentage, .. } => 100 - percentage,
-            Self::FullDonation => 0,
+            Self::FullDonation | Self::Braidpool => 0,
         }
     }
 
@@ -242,7 +249,7 @@ impl PayoutMode {
                 let pool_sats = (total_spendable_sats * *percentage as u64) / 100;
                 total_spendable_sats.saturating_sub(pool_sats)
             }
-            Self::FullDonation => 0,
+            Self::FullDonation | Self::Braidpool => 0,
         }
     }
 
@@ -331,6 +338,7 @@ impl fmt::Display for PayoutMode {
                 percentage
             ),
             Self::FullDonation => write!(f, "100% pool payout"),
+            Self::Braidpool => write!(f, "braidpool node-built payout"),
         }
     }
 }
@@ -525,6 +533,35 @@ mod tests {
         assert!(matches!(
             PayoutMode::try_from("sri/donate"),
             Ok(PayoutMode::FullDonation)
+        ));
+    }
+
+    #[test]
+    fn braidpool_mode_adds_no_pool_outputs() {
+        let pool_script = script_from_address(MINER_ADDRESS).unwrap();
+        // The node already built the full coinbase, so the pool contributes nothing.
+        assert!(
+            PayoutMode::Braidpool
+                .coinbase_outputs(5_000_000_000, &pool_script)
+                .is_empty()
+        );
+        // It owns no miner-output expectation (the node/EDCA guarantees payout
+        // correctness), so validating any output set short-circuits to Ok.
+        assert!(
+            validate_tx_outputs(
+                &PayoutMode::Braidpool,
+                vec![tx_out(5_000_000_000, OTHER_ADDRESS)],
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn braidpool_mode_is_not_selectable_from_identity() {
+        // Braidpool is pool-selected, never requested by a miner's user_identity.
+        assert!(!matches!(
+            PayoutMode::try_from("sri/braidpool/worker"),
+            Ok(PayoutMode::Braidpool)
         ));
     }
 

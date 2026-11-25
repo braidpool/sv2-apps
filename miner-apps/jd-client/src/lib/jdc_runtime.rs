@@ -486,6 +486,13 @@ impl JdcRuntime<IoReady> {
                     cancellation_token: bitcoin_core_cancellation_token,
                 });
             }
+            TemplateProviderType::BraidpoolIpc => {
+                // jd-client is a miner-side app; the Braidpool IPC template provider is
+                // used only by the Braidpool pool/node, never here. Reject the config
+                // instead of panicking.
+                error!("BraidpoolIpc template provider is not supported by jd-client");
+                return Err((JDCErrorKind::CouldNotInitiateSystem, self));
+            }
         }
 
         Ok(JdcRuntime {

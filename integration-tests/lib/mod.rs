@@ -170,7 +170,7 @@ pub async fn start_pool(
     let pool = PoolSv2::new(config);
     let pool_clone = pool.clone();
     tokio::spawn(async move {
-        _ = pool_clone.start().await;
+        _ = pool_clone.start(None).await;
     });
     tokio::time::sleep(ROLE_STARTUP_DELAY).await;
     (pool, listening_address, monitoring_address)
@@ -373,7 +373,7 @@ pub async fn start_pool_with_jds(
     let pool = PoolSv2::new(config);
     let pool_clone = pool.clone();
     tokio::spawn(async move {
-        _ = pool_clone.start().await;
+        _ = pool_clone.start(None).await;
     });
     tokio::time::sleep(ROLE_STARTUP_DELAY).await;
     (pool, pool_address, jds_address, monitoring_address)
